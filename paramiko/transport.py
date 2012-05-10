@@ -411,7 +411,7 @@ class Transport (threading.Thread):
         """
         return SecurityOptions(self)
 
-    def start_client(self, event=None):
+    def start_client(self, event=None, timeout=15):
         """
         Negotiate a new SSH2 session as a client.  This is the first step after
         creating a new L{Transport}.  A separate thread is created for protocol
@@ -442,6 +442,12 @@ class Transport (threading.Thread):
         @raise SSHException: if negotiation fails (and no C{event} was passed
             in)
         """
+        if timeout == None:
+            self.active= False
+            raise SSHException('Must set a &%¤# timeout.')
+        if timeout < 0:
+            timeout= None
+        start_time= time.time()
         self.active = True
         if event is not None:
             # async, return immediately and let the app poll for completion
@@ -455,6 +461,9 @@ class Transport (threading.Thread):
         Random.atfork()
         while True:
             event.wait(0.1)
+            if timeout and (time.time() - start_time >= timeout):
+                self.active= False
+                raise SSHException('Negotiation timed out.')
             if not self.active:
                 e = self.get_exception()
                 if e is not None:
@@ -644,7 +653,7 @@ class Transport (threading.Thread):
         """
         return self.active
 
-    def open_session(self):
+    def open_session(self, timeout=15):
         """
         Request a new channel to the server, of type C{"session"}.  This
         is just an alias for C{open_channel('session')}.
@@ -655,7 +664,7 @@ class Transport (threading.Thread):
         @raise SSHException: if the request is rejected or the session ends
             prematurely
         """
-        return self.open_channel('session')
+        return self.open_channel('session',timeout=timeout)
 
     def open_x11_channel(self, src_addr=None):
         """
@@ -686,7 +695,7 @@ class Transport (threading.Thread):
         """
         return self.open_channel('forwarded-tcpip', (dest_addr, dest_port), (src_addr, src_port))
 
-    def open_channel(self, kind, dest_addr=None, src_addr=None):
+    def open_channel(self, kind, dest_addr=None, src_addr=None, timeout=None):
         """
         Request a new channel to the server.  L{Channel}s are socket-like
         objects used for the actual transfer of data across the session.
@@ -709,6 +718,14 @@ class Transport (threading.Thread):
         @raise SSHException: if the request is rejected or the session ends
             prematurely
         """
+        if timeout == None:
+#            self.active= False
+#            raise SSHException('Must set a timeout.')
+            timeout= 60 # need to avoid waiting ever for negotiation results
+                        # (the reason for hanging negotiation can be that this code is thread-unsecure)
+        if timeout < 0:
+            timeout= None
+        start_time= time.time()
         if not self.active:
             raise SSHException('SSH session not active')
         self.lock.acquire()
@@ -739,6 +756,9 @@ class Transport (threading.Thread):
         self._send_user_message(m)
         while True:
             event.wait(0.1);
+            if timeout and (time.time() - start_time >= timeout):
+                self.active= False
+                raise SSHException('Channel negotiation timed out.')
             if not self.active:
                 e = self.get_exception()
                 if e is None:
