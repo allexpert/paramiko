@@ -25,6 +25,7 @@ import getpass
 import os
 import socket
 import warnings
+import time
 
 from paramiko.agent import Agent
 from paramiko.common import *
@@ -279,6 +280,7 @@ class SSHClient (object):
             establishing an SSH session
         @raise socket.error: if a socket error occurred while connecting
         """
+        start_time=time.time()
         for (family, socktype, proto, canonname, sockaddr) in socket.getaddrinfo(hostname, port, socket.AF_UNSPEC, socket.SOCK_STREAM):
             if socktype == socket.SOCK_STREAM:
                 af = family
@@ -298,7 +300,9 @@ class SSHClient (object):
         t.use_compression(compress=compress)
         if self._log_channel is not None:
             t.set_log_channel(self._log_channel)
-        t.start_client()
+        if timeout:
+            timeout=timeout - (time.time() - start_time)
+        t.start_client(timeout=timeout)
         ResourceManager.register(self, t)
 
         server_key = t.get_remote_server_key()
